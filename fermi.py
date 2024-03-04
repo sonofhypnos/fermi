@@ -31,8 +31,9 @@ def calculate_log_loss(predicted_answer: str, actual_answer: str) -> float:
         predicted_value = float(predicted_answer)
         actual_value = float(actual_answer)
         return abs(math.log10(predicted_value) - math.log10(actual_value))
-    except ValueError:
+    except ValueError as e:
         # Handle cases where conversion to float fails
+        print(f"Failed to convert to float: {e}")
         return float("inf")
 
 def extract_final_answer(full_response: str) -> str|float:
@@ -62,6 +63,7 @@ def extract_final_answer(full_response: str) -> str|float:
 
         except Exception as e:
             print(f"Error evaluating the expression: {e}")
+            print(f"Expression: \"\"\"{final_expression}\"\"\"")
             return "NaN"
     else:
         return "NaN"
@@ -154,9 +156,16 @@ def print_results_and_average_loss(data):
     for result in data:
         prompt = result["prompt"]
         responses = result["responses"]
-        fp_score = result["mean_fp_score"]
-        log_loss = result["mean_log_loss"]
-        print(f"Prompt: {prompt}\nMean Log Loss: {log_loss}\nMean FP Score: {fp_score}\n")
+        log_losses = []
+        fp_scores = []
+        for response in responses:
+            final_answer = extract_final_answer(response["full_response"])
+            log_loss = calculate_log_loss(final_answer, response["actual_answer"])
+            log_losses.append(log_loss)
+            fp_scores.append(calculate_fp_score(final_answer, response["actual_answer"]))
+        mean_log_loss = sum(log_losses) / len(log_losses)
+        mean_fp_score = sum(fp_scores) / len(fp_scores)
+        print(f"Prompt: {prompt}\nMean Log Loss: {mean_log_loss}\nMean FP Score: {mean_fp_score}\n")
 
 
 def load_data_print_results(filename="gpt_prompt_results.json"):
@@ -172,7 +181,7 @@ def load_results(filename):
     return data
 
 
-def fp_score(predicted, actual):
+def calculate_fp_score(predicted, actual):
     if predicted == "Nan":
         return 0
     try:
@@ -190,7 +199,6 @@ def fp_score(predicted, actual):
 def main():
 
     prompts = [
-        "Consider a world where '{question}' has a straightforward answer. Describe the steps you would take to solve this problem in such a world, then apply this reasoning to our current problem.",
         "Quantitatively estimate the answer to '{question}' by identifying key variables and their relationships. Detail your estimation process and final calculation.",
     ]
 
@@ -238,7 +246,7 @@ def main():
     final_results = []
     for prompt, responses in prompt_results.items():
         fp_scores = [
-            fp_score(response["predicted_answer"], response["actual_answer"])
+            calculate_fp_score(response["predicted_answer"], response["actual_answer"])
             for response in responses
         ]
         mean_fp_score = sum(fp_scores) / len(fp_scores)
