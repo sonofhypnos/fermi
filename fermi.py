@@ -37,7 +37,7 @@ def calculate_log_loss(predicted_answer: str, actual_answer: str) -> float:
         return float("inf")
 
 def extract_final_answer(full_response: str) -> str|float:
-    to_removes = ["python\n", "python" ]
+    to_removes = ["python\n", "python","\npython", " python" ]
     for to_remove in to_removes:
         full_response = full_response.replace(
             f"```{to_remove}", "```"
@@ -49,12 +49,12 @@ def extract_final_answer(full_response: str) -> str|float:
         try:
             # TODO: we could also tell the functions in the prompt to not import the math module.
             def safe_import(name, globals=None, locals=None, fromlist=(), level=0):
-                if name in ["math", "another_safe_module"]:
+                if name in ["math"]:
                     return __import__(name, globals, locals, fromlist, level)
                 raise ImportError(f"Import of {name} is not allowed")
 
             safe_globals = {
-                "__builtins__": {"__import__": safe_import},
+                "__builtins__": {"__import__": safe_import, "min": min, "max": max},
                 # Include any other built-ins you wish to allow
             }
             safe_locals = {"result": None}
@@ -129,12 +129,15 @@ def extract_answer_and_unit(answer_string):
         return answer_string, "dollars"
     # All other units
     response = answer_string.split(" ")
+    if len(response) > 2:
+        return response[0], " ".join(response[1:])
     if len(response) == 2:
         return response[0], response[1]
     if len(response) == 1:
         return response[0], "no units. It is dimensionless."
     else:
-        raise Exception(f"Answer string is not in the expected format: {answer_string}")
+        print(f"Answer string is not in the expected format: {answer_string}")
+        return "Nan", "Nan"
 
 
 def save_results_to_json(results: List[Dict], filename: str):
@@ -202,14 +205,13 @@ def main():
         "Quantitatively estimate the answer to '{question}' by identifying key variables and their relationships. Detail your estimation process and final calculation.",
     ]
 
-    # model = "gpt-3.5-turbo-0125"
     model = "gpt-4-1106-preview"
 
-    train_data = load_train_data("./data/realFP/train_realfp.json")
+    train_data = load_train_data("./data/realFP/test_realfp.json")
 
     # Dictionary to accumulate prompt results
     prompt_results = {prompt: [] for prompt in prompts}
-    sample_size = 15
+    sample_size = 100
     results_dir = "./results/"
     prompts_hash = hashlib.md5(str(prompts).encode()).hexdigest()
 
