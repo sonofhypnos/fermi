@@ -1,6 +1,7 @@
 
 from openai import OpenAI
 import os
+import hashlib
 import json
 import math
 from typing import List, Dict, Tuple
@@ -76,6 +77,37 @@ def calculate_log_loss(predicted_answer: str, actual_answer: str) -> float:
 import io
 from contextlib import redirect_stdout
 
+def extract_final_answer(full_response: str) -> str|float:
+    to_removes = ["python\n", "python" ]
+    for to_remove in to_removes:
+        full_response = full_response.replace(
+            f"```{to_remove}", "```"
+        )
+    start = full_response.find("```") + 3  # Offset to skip the '```' itself
+    end = full_response.find("```", start)
+    if start > 1 and end > start:
+        final_expression = full_response[start:end].strip()
+        try:
+            # TODO: we could also tell the functions in the prompt to not import the math module.
+            def safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+                if name in ["math", "another_safe_module"]:
+                    return __import__(name, globals, locals, fromlist, level)
+                raise ImportError(f"Import of {name} is not allowed")
+
+            safe_globals = {
+                "__builtins__": {"__import__": safe_import},
+                # Include any other built-ins you wish to allow
+            }
+            safe_locals = {"result": None}
+            exec(final_expression, safe_globals, safe_locals)
+            return float(safe_locals.get("result", "Number not found"))
+
+        except Exception as e:
+            print(f"Error evaluating the expression: {e}")
+            return "NaN"
+    else:
+        return "NaN"
+
 
 def generate_prediction(question: str, prompt_template: str, client, model) -> str:
     """Generate a prediction for a given question using a specified prompt template, extract, and evaluate the final answer."""
@@ -97,36 +129,8 @@ def generate_prediction(question: str, prompt_template: str, client, model) -> s
     full_response = response.choices[0].message.content
 
     # Extract the final answer or program
+    final_answer = extract_final_answer(full_response)
 
-    to_removes = ["python\n", "python" ]
-    for to_remove in to_removes:
-        final_expression = final_expression.replace(
-            f"```{to_remove}", "```"
-        )
-    start = full_response.find("```") + 3  # Offset to skip the '```' itself
-    end = full_response.find("```", start)
-    if start > 1 and end > start:
-        final_expression = full_response[start:end].strip()
-        try:
-            # TODO: we could also tell the functions in the prompt to not import the math module.
-            def safe_import(name, globals=None, locals=None, fromlist=(), level=0):
-                if name in ["math", "another_safe_module"]:
-                    return __import__(name, globals, locals, fromlist, level)
-                raise ImportError(f"Import of {name} is not allowed")
-
-            safe_globals = {
-                "__builtins__": {"__import__": safe_import},
-                # Include any other built-ins you wish to allow
-            }
-            safe_locals = {"result": None}
-            exec(final_expression, safe_globals, safe_locals)
-            final_answer = float(safe_locals.get("result", "Number not found"))
-
-        except Exception as e:
-            print(f"Error evaluating the expression: {e}")
-            final_answer = "NaN"
-    else:
-        final_answer = "NaN"
 
     return str(final_answer), full_response
 
@@ -159,6 +163,11 @@ def compare_prompts(
 
 
 def extract_answer_and_unit(answer_string):
+    # Handle dollars
+    if answer_string[0] == "$":
+        answer_string = answer_string[1:]
+        return answer_string, "dollars"
+    # All other units
     response = answer_string.split(" ")
     if len(response) == 2:
         return response[0], response[1]
@@ -183,6 +192,7 @@ def load_train_data(filepath: str) -> List[Dict]:
 
 def print_results_and_average_loss(data):
     """Print the saved results and calculate the average loss per prompt."""
+    # TODO : run code such that it recomputes the average loss based on the saved code.
     for result in data:
         prompt = result["prompt"]
         responses = result["responses"]
@@ -196,6 +206,7 @@ def load_data_print_results(filename="gpt_prompt_results.json"):
     print_results_and_average_loss(data)
 
 
+
 def load_results(filename):
     """Load the JSON data from a file."""
     with open(filename, "r") as f:
@@ -206,8 +217,11 @@ def load_results(filename):
 def fp_score(predicted, actual):
     if predicted == "Nan":
         return 0
-    predicted = float(predicted)
-    actual = float(actual)
+    try:
+        predicted = float(predicted)
+        actual = float(actual)
+    except ValueError:
+        return 0
     if actual <= 0 or predicted <= 0:
         return 0
     log_difference = abs(math.log10(predicted) - math.log10(actual))
@@ -218,29 +232,31 @@ def fp_score(predicted, actual):
 def main():
 
     prompts = [
-        "Address the question '{question}' by estimating a lower and an upper 5% bound for the possible answers. First list your consideration for arriving at those estimates. Finally, use the geometric mean of these bounds to compute the most likely answer.",
         "Consider a world where '{question}' has a straightforward answer. Describe the steps you would take to solve this problem in such a world, then apply this reasoning to our current problem.",
-        "The question '{question}' involves complex issues. Break these down into simpler components, solve each component, and then synthesize these solutions to arrive at a final answer.",
         "Quantitatively estimate the answer to '{question}' by identifying key variables and their relationships. Detail your estimation process and final calculation.",
-        #TODO: add that it shouldn't trust it's own calculations to the prompt.
     ]
-    hints = ["While you have excellent knowledge, you should not trust your own calculations. Put as much of your calculation as possible in the code block", "Try two different approaches to the problem and compare the results. Submit a mean of the results that reflects how much you trust each approach."]
+    # hints = [" While you have excellent knowledge, you should not trust your own calculations. Put as much of your calculation into the code as you would if this was a physics exam and you wanted to avoid rounding errors in your final submission."]
+    # new_prompts = []
+    # for hint in hints:
+    #     for prompt in prompts:
+    #         new_prompts.append(prompt + hint)
+    # prompts = new_prompts
 
-    model = "gpt-3.5-turbo-0125"
-
-
+    # model = "gpt-3.5-turbo-0125"
+    model = "gpt-4-1106-preview"
 
     train_data = load_train_data("./data/realFP/train_realfp.json")
 
     # Dictionary to accumulate prompt results
     prompt_results = {prompt: [] for prompt in prompts}
-    sample_size = 10
+    sample_size = 15
     results_dir = "./results/"
+    prompts_hash = hashlib.md5(str(prompts).encode()).hexdigest()
 
+    filepath = f"{results_dir}gpt_prompt_results_{model}_{sample_size}_{prompts_hash}.json"
 
-    filename = f"gpt_prompt_results_{model}_{sample_size}.json"
-    if os.path.exists(os.path.join(results_dir, filename)):
-        load_data_print_results(os.path.join(results_dir, filename))
+    if os.path.exists(filepath):
+        load_data_print_results(filepath)
         exit()
 
     # Get openai key
@@ -256,7 +272,7 @@ def main():
         # Extract and normalize the actual answer and its unit
         actual_answer, unit = extract_answer_and_unit(example["answer"])
         #        remainder = f"Give your answer in {unit}. Provide the final answer as a Python executable expression or final program within '```' that prints the final value."
-        remainder = f"Give your answer in {unit}. Provide the final answer as a Python executable expression or final program within '```' as brackets that sets the `result` variable to the final value. Make sure that your final program doesn't have any free parameters left. Make best-guess estimates for them instead."
+        remainder = f"Give your answer in {unit}. Provide the final answer as a Python executable expression or final program within '```' as brackets that sets the `result` variable to the final value. Make sure that your final program doesn't have any free parameters left. Make best-guess estimates for them instead. You can import math, but all builtin functions like print are disabled."
         # Compare prompts for the current example
         comparison_results = compare_prompts(
             question, actual_answer, prompts, remainder, client, model
@@ -289,7 +305,7 @@ def main():
         )
 
     # Save results to JSON
-    save_results_to_json(final_results, f"{results_dir}gpt_prompt_results_{model}_{sample_size}.json")
+    save_results_to_json(final_results, filepath)
 
 
 if __name__ == "__main__":
