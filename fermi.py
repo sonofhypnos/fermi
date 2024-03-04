@@ -25,7 +25,6 @@ def get_openai_key_from_1password(item_identifier: str) -> str:
         return ""
 
 
-
 def calculate_log_loss(predicted_answer: str, actual_answer: str) -> float:
     """Calculate the log-scale loss between the predicted and actual answers."""
     try:
@@ -35,47 +34,6 @@ def calculate_log_loss(predicted_answer: str, actual_answer: str) -> float:
     except ValueError:
         # Handle cases where conversion to float fails
         return float("inf")
-
-
-# def generate_prediction(question: str, prompt_template: str) -> str:
-#     """Generate a prediction for a given question using a specified prompt template."""
-#     prompt = prompt_template.format(question=question)
-#     messages = [{"role": "user", "content": prompt}]
-
-#     response = client.chat.completions.create(
-#         model=model,
-#         messages=messages,
-#         temperature=0,
-#         stop=None,
-#         top_p=1.0,
-#     )
-#     return response.choices[0].message.content
-
-# def generate_prediction(question: str, prompt_template: str) -> str:
-#     """Generate a prediction for a given question using a specified prompt template and extract the final answer."""
-#     prompt = prompt_template.format(question=question)
-#     messages = [{"role": "user", "content": prompt}]
-#     thread = client.beta.threads.create(
-#                 messages=messages,
-#                 )
-
-#     response = client.chat.completions.create(
-#         model=model,
-#         messages=messages,
-#         temperature=0,
-#         stop=None,
-#         top_p=1.0,
-#     )
-#     full_response = response.choices[0].message.content
-
-#     # Extract the final answer using the specified format
-#     start = full_response.find("[[") + 2  # Offset by 2 to skip the brackets themselves
-#     end = full_response.find("]]", start)
-#     final_answer = full_response[start:end].strip() if start > 1 and end > start else "NaN"
-
-#     return final_answer, full_response
-import io
-from contextlib import redirect_stdout
 
 def extract_final_answer(full_response: str) -> str|float:
     to_removes = ["python\n", "python" ]
@@ -235,12 +193,6 @@ def main():
         "Consider a world where '{question}' has a straightforward answer. Describe the steps you would take to solve this problem in such a world, then apply this reasoning to our current problem.",
         "Quantitatively estimate the answer to '{question}' by identifying key variables and their relationships. Detail your estimation process and final calculation.",
     ]
-    # hints = [" While you have excellent knowledge, you should not trust your own calculations. Put as much of your calculation into the code as you would if this was a physics exam and you wanted to avoid rounding errors in your final submission."]
-    # new_prompts = []
-    # for hint in hints:
-    #     for prompt in prompts:
-    #         new_prompts.append(prompt + hint)
-    # prompts = new_prompts
 
     # model = "gpt-3.5-turbo-0125"
     model = "gpt-4-1106-preview"
