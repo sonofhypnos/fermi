@@ -1,4 +1,3 @@
-
 from openai import OpenAI
 import os
 import hashlib
@@ -6,6 +5,7 @@ import json
 import math
 from typing import List, Dict, Tuple
 import subprocess
+
 
 def get_openai_key_from_1password(item_identifier: str) -> str:
     """Fetch the OpenAI API key stored in 1Password using the 1Password CLI."""
@@ -25,23 +25,46 @@ def get_openai_key_from_1password(item_identifier: str) -> str:
         return ""
 
 
+def sign(x):
+    if x > 0:
+        return 1
+    if x < 0:
+        return -1
+    if x == 0:
+        return 1
+
+
 def calculate_log_loss(predicted_answer: str, actual_answer: str) -> float:
     """Calculate the log-scale loss between the predicted and actual answers."""
+    inf = float("inf")
+    epsilon = 10**-80
+    # FIXME: below evaluation does not make sense below 1 if one value is
+    # negative and one value is positive as it then looks for the distance from
+    # 1. I expect it too be too harsh which seems like the side one wants to
+    # fail on.
     try:
-        predicted_value = float(predicted_answer)
-        actual_value = float(actual_answer)
-        return abs(math.log10(predicted_value) - math.log10(actual_value))
+        predicted_value = (
+            float(predicted_answer) + epsilon
+        )  # Add epsilon to make 0 unlikely
+        actual_value = float(actual_answer) + epsilon
+
+        return abs(
+            sign(predicted_value) * (math.log10(abs(predicted_value)))
+            - (sign(actual_value) * math.log10(abs(actual_value)))
+        )
     except ValueError as e:
         # Handle cases where conversion to float fails
         print(f"Failed to convert to float: {e}")
-        return float("inf")
+        return inf
+    # except ZeroDivisionError as e:
+    #     print(f"Guestimated value is 0")
+    #     return inf
 
-def extract_final_answer(full_response: str) -> str|float:
-    to_removes = ["python\n", "python","\npython", " python" ]
+
+def extract_final_answer(full_response: str) -> str | float:
+    to_removes = ["python\n", "python", "\npython", " python", "\{python\}"]
     for to_remove in to_removes:
-        full_response = full_response.replace(
-            f"```{to_remove}", "```"
-        )
+        full_response = full_response.replace(f"```{to_remove}", "```")
     start = full_response.find("```") + 3  # Offset to skip the '```' itself
     end = full_response.find("```", start)
     if start > 1 and end > start:
@@ -62,8 +85,8 @@ def extract_final_answer(full_response: str) -> str|float:
             return float(safe_locals.get("result", "Number not found"))
 
         except Exception as e:
-            print(f"Error evaluating the expression: {e}")
-            print(f"Expression: \"\"\"{final_expression}\"\"\"")
+            # print(f"Error evaluating the expression: {e}")
+            # print(f"Expression: \"\"\"{final_expression}\"\"\"")
             return "NaN"
     else:
         return "NaN"
@@ -90,7 +113,6 @@ def generate_prediction(question: str, prompt_template: str, client, model) -> s
 
     # Extract the final answer or program
     final_answer = extract_final_answer(full_response)
-
 
     return str(final_answer), full_response
 
@@ -124,17 +146,21 @@ def compare_prompts(
 
 def extract_answer_and_unit(answer_string):
     # Handle dollars
+    unit = ""
     if answer_string[0] == "$":
         answer_string = answer_string[1:]
-        return answer_string, "dollars"
+        unit += "$"
     # All other units
     response = answer_string.split(" ")
     if len(response) > 2:
-        return response[0], " ".join(response[1:])
+        return response[0], unit + " ".join(response[1:])
     if len(response) == 2:
-        return response[0], response[1]
+        return response[0], unit + response[1]
     if len(response) == 1:
-        return response[0], "no units. It is dimensionless."
+        if unit == "":
+            return response[0], "no units. It is dimensionless."
+        else:
+            return response[0], unit
     else:
         print(f"Answer string is not in the expected format: {answer_string}")
         return "Nan", "Nan"
@@ -165,16 +191,32 @@ def print_results_and_average_loss(data):
             final_answer = extract_final_answer(response["full_response"])
             log_loss = calculate_log_loss(final_answer, response["actual_answer"])
             log_losses.append(log_loss)
-            fp_scores.append(calculate_fp_score(final_answer, response["actual_answer"]))
+            fp_scores.append(
+                calculate_fp_score(final_answer, response["actual_answer"])
+            )
+            if log_loss == float("inf"):
+                print(f"Problematic_response: {response['full_response']}")
+        percent_failt = sum(
+            [
+                1
+                for log_loss in log_losses
+                if log_loss == float("inf") or math.isnan(log_loss)
+            ]
+        ) / len(log_losses)
+        log_losses = [
+            log_loss if (log_loss != float("inf") and not math.isnan(log_loss)) else 10
+            for log_loss in log_losses
+        ]
         mean_log_loss = sum(log_losses) / len(log_losses)
         mean_fp_score = sum(fp_scores) / len(fp_scores)
-        print(f"Prompt: {prompt}\nMean Log Loss: {mean_log_loss}\nMean FP Score: {mean_fp_score}\n")
+        print(
+            f"Prompt: {prompt}\nMean Log Loss: {mean_log_loss}\nMean FP Score: {mean_fp_score}\nPercent Failt: {percent_failt}\nResponses: {len(log_losses)}\n"
+        )
 
 
 def load_data_print_results(filename="gpt_prompt_results.json"):
     data = load_results(filename)
     print_results_and_average_loss(data)
-
 
 
 def load_results(filename):
@@ -205,17 +247,21 @@ def main():
         "Quantitatively estimate the answer to '{question}' by identifying key variables and their relationships. Detail your estimation process and final calculation.",
     ]
 
-    model = "gpt-4-1106-preview"
+    # model = "gpt-4-1106-preview"
+    # model = "gpt-3.5-turbo-0125"
+    model = "gpt-4-0613"
 
     train_data = load_train_data("./data/realFP/test_realfp.json")
 
     # Dictionary to accumulate prompt results
     prompt_results = {prompt: [] for prompt in prompts}
-    sample_size = 100
+    sample_size = 10
     results_dir = "./results/"
     prompts_hash = hashlib.md5(str(prompts).encode()).hexdigest()
 
-    filepath = f"{results_dir}gpt_prompt_results_{model}_{sample_size}_{prompts_hash}.json"
+    filepath = (
+        f"{results_dir}gpt_prompt_results_{model}_{sample_size}_{prompts_hash}.json"
+    )
 
     if os.path.exists(filepath):
         load_data_print_results(filepath)
@@ -272,4 +318,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
