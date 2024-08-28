@@ -1,23 +1,21 @@
-# Fermi Problems: A New Reasoning Challenge for AI
+# About this project
 
-Fermi Problems are questions whose answer is a number that can only be reasonably estimated as a precise measurement of the value is either impossible or impractical. 
+**TLDR: I looked into how much it would take to fine-tune gpt-4 to do Fermi estimates better. If you liked** [**the post/paper**](https://www.lesswrong.com/posts/K2F9g2aQubd7kwEr3/approaching-human-level-forecasting-with-language-models-2) **on fine-tuning Language models to make predictions you might like reading this. I evaluated gpt-4 on the first dataset I found, but gpt-4 was already making better fermi estimates than the examples in the dataset, so I stopped there (**[**my code**](https://github.com/sonofhypnos/fermi)**).**
 
-This repository provides two datasets of such fermi problems along with annotations for the solution:
-- RealFP @ `./data/realFP`. A collection of 928 fermi problems and their solutions expressed in the form a program.
-- SynthFP @ `.data/synthFP`. An auxilliary set of 10000 templated fermi questions, created by the authors.
+First problem I encountered: there is no public access to fine-tuning gpt-4 so far. Ok, we might as well just do gpt-3.5 I guess.
 
-Code for compiling the program in the dataset and computing the accuracy metric is provided in `eval_utils.py`. For more details on the datasets, please refer to our paper: [How Much Coffee Was Consumed During EMNLP 2019? Fermi Problems: A New Reasoning Challenge for AI](https://arxiv.org/abs/2110.14207).
+First, I found this [Fermi estimate dataset](https://github.com/allenai/fermi). (While doing this, I was thinking I should perhaps search more widely what kind of different AI benchmarks exist, since probably a dataset that is evaluating a similar capability is already out there, but I don't know its name.)
 
-## Inference
+Next I looked at [this paper](https://ceur-ws.org/Vol-3551/paper9.pdf), where people used among other gpt-3.5 and gpt-4 on this benchmark. Clearly these people weren't even trying, though, because gpt-4 does worse than gpt-3.5. One of the main issues I saw was that they were trying to make the LLM output the answer as a program in the domain specific language used in that dataset. They couldn't even get the LLM to output valid programs more than 60% of the time (their metric compares on a log scale, if the answer by the LLM is within 3 orders of magnitude of the real answer. 1 is best 0 is more than 3 orders of magnitude away: fp-score(x) = max(0,1-1/3 * | log_10(prediction/answer)|)).
 
-You can download a model finetuned on the `realFP` dataset [here](https://drive.google.com/file/d/1C_JnoHotqT12yheNZCKg1IirHUCHp1ve/view?usp=sharing). Answers to your fermi questions can be obtained by executing the following command: `python inference --question your_question_here`. Make sure to check `requirements.txt` for any dependencies.
+![image](https://i.imgur.com/sS6keul.png)
 
-If you use the datasets or any other content shared in this repository, please cite our work: 
-```
-@article{kalyan2021much,
-  title={How Much Coffee Was Consumed During EMNLP 2019? Fermi Problems: A New Reasoning Challenge for AI},
-  author={Kalyan, Ashwin and Kumar, Abhinav and Chandrasekaran, Arjun and Sabharwal, Ashish and Clark, Peter},
-  journal={arXiv preprint arXiv:2110.14207},
-  year={2021}
-}
-```
+My conjecture was that just using python instead should give you better results.(This turned out to be true). I get a mean score of ~0.57 on 100 sample problems, so as good results with gpt-4-turbo as they get when they first provide “context” by giving the llm the values for the key variables needed to compute the answer (why would this task even still be hard at all?).
+
+When gpt-4 turned out to get a worse fp-score than gpt-4-turbo on my 10 samples. I got suspicious and after looking at samples gpt-4 got a bad score, it was clear this was mostly to blame on bad quality of the dataset. 2 answers were flat-out not using the correct variables/confused, while gpt-4 was answering correctly. Once, the question didn't make clear what unit to use. 2 of the samples gpt-4 gave a better answer. Once, using a better approach (using geometry instead of wrong figures of how much energy the earth gets from the sun, to determine the fraction of sun energy that the earth receives). Once, by having better numbers, input estimates like how many car miles are driven in total in the US.
+
+So on this dataset, gpt-4 seems to be already at the point of data-saturation. I was actually quite impressed how well it was doing. When I had tried using gpt-4 for this task, I had always felt like it was doing quite badly. One guess I have is this is because when I ask gpt-4 for an estimate, it is often a practical question, which is actually harder than these artificial questions. In addition, the reason I ask gpt-4 is that the question is hard, and I expect to need to employ a lot of cognitive labor to do it myself.
+
+Another data point with respect to this was the “Thinking physics exercises”. Which [I tried with some of my friends](https://www.lesswrong.com/posts/PiPH4gkcMuvLALymK/exercise-solve-thinking-physics#MWbkF74caCaw39Abz). For that task, gpt-4 was better than people who were bad at this, but worse than people who were good at this (and given 5–10 minutes of thinking time) (although I did not rigorously evaluate that). GPT-4 is probably better than most humans at doing Fermi estimates given 10 minutes of time. Especially in domains one is unfamiliar with, since it has so much more breadth.
+
+I would be interested to see what one would get out of actually making a high quality dataset by taking Fermi estimates from people I deem to produce high quality work in that area.
