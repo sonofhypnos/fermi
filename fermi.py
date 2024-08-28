@@ -7,8 +7,13 @@ from typing import List, Dict, Tuple
 import subprocess
 
 
-def get_openai_key_from_1password(item_identifier: str) -> str:
-    """Fetch the OpenAI API key stored in 1Password using the 1Password CLI."""
+def get_openai_key(item_identifier: str) -> str:
+    """Fetch the OpenAI API key from env or from 1Password using the 1Password CLI."""
+
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if openai_key:
+        return openai_key
+
     try:
         # The command to execute, split into parts for subprocess
         command = ["op", "item", "get", item_identifier, "--fields", "credential"]
@@ -269,7 +274,7 @@ def main():
 
     # Get openai key
     item_identifier = "yocqakmciuu7bidjgftbol57wy"
-    openai_api_key = get_openai_key_from_1password(item_identifier)
+    openai_api_key = get_openai_key(item_identifier)
     client = OpenAI(api_key=openai_api_key)
 
     # Iterate over each training example
