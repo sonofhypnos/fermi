@@ -1,6 +1,6 @@
 # Motivation:
 
-**TLDR: I looked into how much it would take to fine-tune gpt-4 to do Fermi estimates better. If you liked** [**the post/paper**](https://www.lesswrong.com/posts/K2F9g2aQubd7kwEr3/approaching-human-level-forecasting-with-language-models-2) **on fine-tuning Language models to make predictions you might like reading this. I evaluated gpt-4 on the first dataset I found, but gpt-4 was already making better fermi estimates than the examples in the dataset, so I stopped there. See infos on how to replicate my results below**
+**TLDR: I looked into how much it would take to fine-tune gpt-4 to do Fermi estimates better. If you liked** [**the post/paper**](https://www.lesswrong.com/posts/K2F9g2aQubd7kwEr3/approaching-human-level-forecasting-with-language-models-2) **on fine-tuning Language models to make predictions you might like reading this. I evaluated gpt-4 on the first dataset I found, but gpt-4 was already making better fermi estimates than the examples in the dataset, so I stopped there. See infos on how to replicate my results in the next section**
 
 First problem I encountered: there is no public access to fine-tuning gpt-4 so far. Ok, we might as well just do gpt-3.5 I guess.
 
